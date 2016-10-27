@@ -1,0 +1,1 @@
+This project contains code to try and model persistence in a IR detector.
