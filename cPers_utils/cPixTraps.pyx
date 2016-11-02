@@ -72,25 +72,24 @@ class cPixTraps(object):
         self.totfill = np.zeros((ntimes-1),dtype=np.float_)
 
         for i in range(ntimes-1):
-            counts = rmp.rcts[i]
-            dt = rmp.rtime[i] - rmp.rtime[i+1]
+            counts    = rmp.rcts[i]
+            dt        = rmp.rtime[i] - rmp.rtime[i+1]
             
-            above_cut   = self.cmin <= counts
-            below_cut   = ~above_cut
+            above_cut = self.cmin <= counts
+            below_cut = ~above_cut
 
             if (dt == self.dt):
-                diff_occ   = self.prev_states ^ self.states
-                diff_a = above_cut & ((above_cut  ^ self.above_cut) | diff_occ)
-                diff_b = below_cut & ((below_cut  ^ self.below_cut) | diff_occ)
-                                
+                d_occ  = self.prev_states ^ self.states
+                diff_a = above_cut & ((above_cut  ^ self.above_cut) | d_occ)
+                diff_b = below_cut & ((below_cut  ^ self.below_cut) | d_occ)
             else:
                 diff_a  = above_cut
                 diff_b  = below_cut
 
-            exp1       = np.exp(self.a[diff_a]*dt)
+            exp1 = np.exp(self.a[diff_a]*dt)
             self.occ_prob[diff_a] = self.states[diff_a].astype(np.float_) * exp1 + self.b[diff_a]*(1-exp1)
 
-            exp2      = self.states[diff_b] * np.exp( dt / self.t_rel[diff_b] )
+            exp2 = self.states[diff_b] * np.exp( dt / self.t_rel[diff_b] )
             self.occ_prob[diff_b] = exp2
 
             self.prev_states = self.states
@@ -99,8 +98,7 @@ class cPixTraps(object):
             self.above_cut   = above_cut
             self.below_cut   = below_cut
             self.dt = dt
-           
-                    
+                               
     def reset(self):
         '''
         Method to reset the occupancy of all traps to 0
