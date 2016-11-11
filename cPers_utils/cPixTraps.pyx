@@ -2,7 +2,6 @@ import numpy as np
 from Pers_utils.Ramp import Ramp
 from Pers_utils.MyExceptions import CustExc1M3V
 import copy
-from numba import jit
 
 class cPixTraps(object):
 
@@ -70,10 +69,12 @@ class cPixTraps(object):
 
         ntimes = len(rmp.rtime)
         self.totfill = np.zeros((ntimes-1),dtype=np.float_)
+        rcts = rmp.rcts
+        rtime = rmp.rtime
 
         for i in range(ntimes-1):
-            counts    = rmp.rcts[i]
-            dt        = rmp.rtime[i] - rmp.rtime[i+1]
+            counts    = rcts[i]
+            dt        = rtime[i] - rtime[i+1]
             
             above_cut = self.cmin <= counts
             below_cut = np.logical_not(above_cut)
