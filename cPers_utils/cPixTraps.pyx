@@ -2,9 +2,8 @@ import numpy as np
 from Pers_utils.Ramp import Ramp
 from Pers_utils.MyExceptions import CustExc1M3V
 import copy
-from numba import jit
 
-class PixTraps(object):
+class cPixTraps(object):
 
     '''
     Class to describe the ensemble of traps for a pixel
@@ -46,49 +45,11 @@ class PixTraps(object):
         '''
         self.a = (self.t_trp + self.t_rel)/(self.t_trp*self.t_rel)
         self.b = self.t_rel/(self.t_trp + self.t_rel)
+        self.above_cut   = np.zeros(self.ntraps,dtype=np.bool_)
+        self.below_cut   = np.zeros(self.ntraps,dtype=np.bool_)
+        self.prev_states = np.zeros(self.ntraps,dtype=np.bool_)
+        self.dt          = 0.
 
-    def set_new_states(self,ts,te,counts):
-        '''
-        Method to see whether the state changes within an interval
-        with the diode at a certain total counts level
-
-        :ts:
-            starting time
-
-        :te:
-            ending time
-
-        :counts:
-            total counts in the diode at ts<t<te
-        '''
-
-        '''
-        Determine which equation to apply. 
-        '''
-
-        above_cut   = self.cmin <= counts
-        below_cut_1 = (self.cmin > counts) & (self.states == True)
-        below_cut_0 = (self.cmin > counts) & (self.states == False)
-
-
-        '''
-        If the counts are above cmin
-        '''
-        exp1      = np.exp(self.a[above_cut]*(ts-te))
-        self.occ_prob[above_cut] = self.states[above_cut].astype(np.float_) * exp1 + self.b[above_cut]*(1-exp1)
-        
-        exp2      = np.exp( (ts-te) / self.t_rel[below_cut_1] )
-        self.occ_prob[below_cut_1] = exp2
-
-        self.occ_prob[below_cut_0] = 0.
-
-
-        '''
-        Draw uniform random numbers and decide whether each trap is occupied or not
-        '''
-
-        check = np.random.random_sample(size=self.ntraps)
-        self.states = np.array( check < self.occ_prob ,dtype=np.bool_)
         
     def end_ramp_occ(self,rmp):
         '''
@@ -103,12 +64,43 @@ class PixTraps(object):
             when we start measuring persistence.
         '''
 
+        cdef int counts,i,ntimes
+        cdef float dt
+
         ntimes = len(rmp.rtime)
         self.totfill = np.zeros((ntimes-1),dtype=np.float_)
-        for i in range(ntimes-1):
-            self.set_new_states(rmp.rtime[i],rmp.rtime[i+1],rmp.rcts[i])
-            self.totfill[i] = np.sum(self.states)
+        rcts = rmp.rcts
+        rtime = rmp.rtime
 
+        for i in range(ntimes-1):
+            counts    = rcts[i]
+            dt        = rtime[i] - rtime[i+1]
+            
+            above_cut = self.cmin <= counts
+            below_cut = np.logical_not(above_cut)
+
+            if (dt == self.dt):
+                d_occ  = np.logical_xor(self.prev_states,self.states)
+                diff_a = np.logical_and(above_cut,np.logical_or(np.logical_xor(above_cut,self.above_cut),d_occ))
+                diff_b = np.logical_and(below_cut,np.logical_or(np.logical_xor(below_cut,self.below_cut),d_occ))
+
+            else:
+                diff_a  = above_cut
+                diff_b  = below_cut
+
+            exp1 = np.exp(self.a[diff_a]*dt)
+            self.occ_prob[diff_a] = self.states[diff_a].astype(np.float_) * exp1 + self.b[diff_a]*(1-exp1)
+
+            exp2 = self.states[diff_b] * np.exp( dt / self.t_rel[diff_b] )
+            self.occ_prob[diff_b] = exp2
+
+            self.prev_states = self.states
+            self.states      = np.random.random_sample(size=self.ntraps)  < self.occ_prob
+            self.totfill[i]  = np.sum(self.states)
+            self.above_cut   = above_cut
+            self.below_cut   = below_cut
+            self.dt = dt
+                               
     def reset(self):
         '''
         Method to reset the occupancy of all traps to 0
