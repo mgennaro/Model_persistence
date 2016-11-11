@@ -76,12 +76,13 @@ class cPixTraps(object):
             dt        = rmp.rtime[i] - rmp.rtime[i+1]
             
             above_cut = self.cmin <= counts
-            below_cut = ~above_cut
+            below_cut = np.logical_not(above_cut)
 
             if (dt == self.dt):
-                d_occ  = self.prev_states ^ self.states
-                diff_a = above_cut & ((above_cut  ^ self.above_cut) | d_occ)
-                diff_b = below_cut & ((below_cut  ^ self.below_cut) | d_occ)
+                d_occ  = np.logical_xor(self.prev_states,self.states)
+                diff_a = np.logical_and(above_cut,np.logical_or(np.logical_xor(above_cut,self.above_cut),d_occ))
+                diff_b = np.logical_and(below_cut,np.logical_or(np.logical_xor(below_cut,self.below_cut),d_occ))
+
             else:
                 diff_a  = above_cut
                 diff_b  = below_cut
