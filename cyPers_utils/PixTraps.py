@@ -3,14 +3,9 @@ from Pers_utils.Ramp import Ramp
 from Pers_utils.MyExceptions import CustExc1M3V
 import copy
 from numba import jit
-import cython
+from cyPers_utils._fast_end_ramp_occ import _fast_end_ramp_occ
 
-@cython.cdivision(True) 
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
-
-class cPixTraps(object):
+class PixTraps(object):
 
     '''
     Class to describe the ensemble of traps for a pixel
@@ -45,18 +40,12 @@ class cPixTraps(object):
         Initialise the traps to empty
         '''
         self.states   = np.zeros(self.ntraps,dtype=np.bool_)
-        self.occ_prob = np.zeros(self.ntraps,dtype=np.float_)
 
         '''
         Convenience variables for the diff. equations
         '''
         self.a = (self.t_trp + self.t_rel)/(self.t_trp*self.t_rel)
         self.b = self.t_rel/(self.t_trp + self.t_rel)
-        self.above_cut   = np.zeros(self.ntraps,dtype=np.bool_)
-        self.below_cut   = np.zeros(self.ntraps,dtype=np.bool_)
-        self.prev_states = np.zeros(self.ntraps,dtype=np.bool_)
-        self.dt          = 0.
-
         
     def end_ramp_occ(self,rmp):
         '''
@@ -71,52 +60,18 @@ class cPixTraps(object):
             when we start measuring persistence.
         '''
 
-        cdef int counts,i,ntimes
-        cdef float dt
+        totfill, states = _fast_end_ramp_occ(rmp.rtime,rmp.rcts.astype(np.int),self.cmin,self.a,self.b,self.t_rel)
+        self.totfill = np.array(totfill,dtype=np.float_)
+        self.states  = np.array(states,dtype=np.bool_)
 
-        rcts  = rmp.rcts
-        rtime = rmp.rtime
-        ntimes = len(rtime)
-        self.totfill = np.zeros((ntimes-1),dtype=np.float_)
-
-        for i in range(ntimes-1):
-            counts    = rcts[i]
-            dt        = rtime[i] - rtime[i+1]
-            
-            above_cut = self.cmin <= counts
-            below_cut = np.logical_not(above_cut)
-
-            if (dt == self.dt):
-                d_occ  = np.logical_xor(self.prev_states,self.states)
-                diff_a = np.logical_and(above_cut,np.logical_or(np.logical_xor(above_cut,self.above_cut),d_occ))
-                diff_b = np.logical_and(below_cut,np.logical_or(np.logical_xor(below_cut,self.below_cut),d_occ))
-
-            else:
-                diff_a  = above_cut
-                diff_b  = below_cut
-
-            exp1 = np.exp(self.a[diff_a]*dt)
-            self.occ_prob[diff_a] = self.states[diff_a] * exp1 + self.b[diff_a]*(1-exp1)
-
-            exp2 = self.states[diff_b] * np.exp( dt / self.t_rel[diff_b] )
-            self.occ_prob[diff_b] = exp2
-
-            self.prev_states = self.states
-            self.states      = np.random.random_sample(size=self.ntraps)  < self.occ_prob
-            self.totfill[i]  = np.sum(self.states)
-            self.above_cut   = above_cut
-            self.below_cut   = below_cut
-            self.dt          = dt
-
-        
+                               
     def reset(self):
         '''
         Method to reset the occupancy of all traps to 0
         '''
 
-        self.states[:]   = 0. 
-        self.occ_prob[:] = 0.
-
+        self.states[:]   = 0.
+        
 
     def get_acc_charge(self,t_after):
         '''
@@ -126,6 +81,7 @@ class cPixTraps(object):
         '''
 
         charge = np.zeros(len(t_after))
+
         usest   = copy.deepcopy(self.states[self.states])
         usert   = copy.deepcopy(self.t_rel[self.states])
 
