@@ -110,13 +110,12 @@ class cPixTraps(object):
         self.occ_prob[:] = 0.
 
 
-    def get_acc_charge(self,t_after):
+    def get_trapped_charge(self,t_after):
         '''
-        Method to measure the accumulated charge at times t_after
+        Method to measure the total charge still trapped at times t_after
         after the end of the ramp. It assumes the diode
         is no longer being exposed to light
         '''
-
         charge = np.zeros(len(t_after))
 
         filled  = (self.states == True)
@@ -125,12 +124,98 @@ class cPixTraps(object):
 
         for i in range(len(t_after)):
             exp       = np.exp( -1*(t_after[i]) / usert )
-            check     = np.random.random_sample(size=len(exp))
+            check     = np.random.random_sample(size=exp.size)
             idis      = check > exp 
             ikeep     = check < exp
             
-            charge[i] = charge[i-1] + np.sum(idis)
+            charge[i] = np.sum(ikeep)
             usest     = usest[ikeep]
             usert     = usert[ikeep]
 
         return charge
+
+
+    def follow_occ_prob(self,rmp,times):
+        '''
+        Method that computes the occupation probability
+        of each trap in the pixel at given times.
+
+        :rmp:
+            rmp is a Ramp object that describes the  history
+            of the pixel (in raw counts) up to the time
+            when we start measuring persistence.
+
+        :times:
+            numpy array of times at which the occupancy is desired
+        '''
+
+        cdef int j,k,nshifts,ntimes
+        cdef double f0,dt,exp1
+
+        rcts = rmp.rcts
+        rtime = rmp.rtime
+        ntimes = times.size
+        op = np.zeros([self.ntraps,ntimes])
+
+        for i in range(self.ntraps):
+
+            '''
+            Check when the trap switches between exposed and not-eposed
+            '''
+            above   = rcts > self.cmin[i]
+            shifts  = np.logical_xor(above[1:],above[:-1])   # Indices of the last rtime before the shift
+            nshifts = np.sum(shifts)
+
+            '''
+            Compute the occupancy probability up to each shift point
+            '''
+            shift_times = rtime[0:-1][shifts]
+            states      = above[0:-1][shifts]
+            shift_times = np.insert(shift_times,0,0.)
+            states      = np.insert(states,0,above[0])
+
+            f0 = 0.  # all traps are empty a time = 0
+            j = 0
+            for k in range(nshifts):
+
+                if (states[k+1] == True):
+                    while (times[j] <= shift_times[k+1]):
+                        dt  = shift_times[k]-times[j]
+                        exp1 = np.exp(self.a[i]*dt)
+                        op[i,j] = f0 * exp1 + self.b[i]*(1-exp1)
+                        j = j +1
+                    dt = shift_times[k]- shift_times[k+1]
+                    exp1 = np.exp(self.a[i]*dt)
+                    f0 = f0 * exp1 + self.b[i]*(1-exp1)
+                else:
+                    while (times[j] <= shift_times[k+1]):
+                        dt  = shift_times[k]-times[j]
+                        op[i,j] = f0 * np.exp( dt / self.t_rel[i] )
+                        j = j +1
+                    dt = shift_times[k]- shift_times[k+1]
+                    f0 = f0 * np.exp( dt / self.t_rel[i] )
+
+            while (j < ntimes):
+                dt  = shift_times[-1]-times[j]
+                op[i,j] = f0 * np.exp( dt / self.t_rel[i] )
+                j = j +1
+            
+        return op
+
+
+    def get_trapped_charge_diff(self,rmp,t_after):
+        '''
+        Method to measure the total charge that comes out of traps
+        by times t_after after the end of the ramp rmp. It assumes the diode
+        is no longer being exposed to light
+        '''
+
+        '''
+        Get the occupancy probabilities at the end of the ramp and
+        generate random numbers to get which traps are actually filled
+        '''
+        op0 = np.squeeze(self.follow_occ_prob(rmp,np.array([rmp.rtime[-1]])))
+        self.states = np.random.random_sample(size=self.ntraps)  < op0
+        
+        
+        return self.get_trapped_charge(t_after)
