@@ -116,22 +116,16 @@ class cPixTraps(object):
         after the end of the ramp. It assumes the diode
         is no longer being exposed to light
         '''
-        charge = np.zeros(len(t_after))
-
-        filled  = (self.states == True)
-        usest   = copy.deepcopy(self.states[filled])
-        usert   = copy.deepcopy(self.t_rel[filled])
-
-        for i in range(len(t_after)):
-            exp       = np.exp( -1*(t_after[i]) / usert )
-            check     = np.random.random_sample(size=exp.size)
-            idis      = check > exp 
-            ikeep     = check < exp
-            
+        charge = np.zeros(len(t_after)-1)
+        usert   = copy.deepcopy(self.t_rel[self.states])
+ 
+        for i in range(len(t_after)-1):
+            pmean     = (t_after[i+1]-t_after[i]) / usert
+            exp       = np.exp( -1.*pmean )
+            ikeep     = np.random.random_sample(size=exp.size) < exp
             charge[i] = np.sum(ikeep)
-            usest     = usest[ikeep]
             usert     = usert[ikeep]
-
+ 
         return charge
 
 
@@ -152,10 +146,10 @@ class cPixTraps(object):
         cdef int j,k,nshifts,ntimes
         cdef double f0,dt,exp1
 
-        rcts = rmp.rcts
-        rtime = rmp.rtime
+        rcts   = rmp.rcts
+        rtime  = rmp.rtime
         ntimes = times.size
-        op = np.zeros([self.ntraps,ntimes])
+        op     = np.zeros([self.ntraps,ntimes])
 
         for i in range(self.ntraps):
 
@@ -175,7 +169,7 @@ class cPixTraps(object):
             states      = np.insert(states,0,above[0])
 
             f0 = 0.  # all traps are empty a time = 0
-            j = 0
+            j  = 0
             for k in range(nshifts):
 
                 if (states[k+1] == True):
@@ -216,6 +210,13 @@ class cPixTraps(object):
         '''
         op0 = np.squeeze(self.follow_occ_prob(rmp,np.array([rmp.rtime[-1]])))
         self.states = np.random.random_sample(size=self.ntraps)  < op0
-        
-        
-        return self.get_trapped_charge(t_after)
+
+        '''
+        Generate the instant of decay for the traps that are filled
+        '''
+        tdecay = -1 * self.t_rel[self.states]*np.log(np.random.random_sample(size=np.sum(self.states)))
+        hist, edges = np.histogram(tdecay,bins=np.insert(t_after,0,-1.))
+        charge = np.sum(self.states) - np.cumsum(hist)
+
+        return charge
+
